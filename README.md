@@ -58,59 +58,103 @@
 ### 4. Cloud Integration
 - Firebase Storage or AWS S3: For uploading and retrieving whiteboard drawings.
 
-## Flow of Exam Creation and Submission
+## How to Run the Application
+1. **Clone the Repository:**
+   ```bash
+   git clone <YOUR_GITHUB_REPO_URL>
+   cd <YOUR_PROJECT_DIRECTORY>
+   ```
 
-**Faculty Flow:**
-- Faculty logs in and accesses the dashboard.
-- Creates a new exam:
-  - Sets name, date, time, and duration.
-  - Adds questions (MCQ, text, drawing options).
-  - Publishes the exam for students to access.
+2. **Install Dependencies:**
+   For the backend:
+   ```bash
+   cd backend
+   npm install
+   ```
 
-**Student Flow:**
-- Student logs in and selects an available exam.
-- Exam Interface:
-  - Question series visible as a navigation strip.
-  - Whiteboard below for answers.
-  - Timer running on top.
-- Students:
-  - Save answers manually or auto-save as they navigate.
-  - Submit all answers via a "Submit" button or on timer expiry.
-  - Backend validates and stores the submission.
+   For the frontend:
+   ```bash
+   cd ../src
+   npm install
+   ```
 
-## Core Features and Libraries
-- **Question Navigation:** Use React state/context to handle question switching.
-- **Whiteboard Integration:** Use Fabric.js for advanced drawing features.
-- **Answer Auto-Save:** Call an API on navigation or at fixed intervals.
-- **Timer and Auto-Submission:** Use a countdown timer with React hooks, triggering auto-submission on expiry.
-- **Grading and Review:** Faculty views student submissions (images/drawings) and assigns grades.
+3. **Set Up Environment Variables:**
+   Create a `.env` file in the backend directory and add your environment variables (e.g., database connection strings, API keys).
 
-## Database Schema
-**Users Table:**
-| Field | Type | Description |
-|-------|------|-------------|
-| id | Primary Key | Unique user ID |
-| name | String | Name of user |
-| role | String | 'Student' or 'Faculty' |
+4. **Run the Backend:**
+   ```bash
+   cd backend
+   npm start
+   ```
 
-**Exams Table:**
-| Field | Type | Description |
-|-------|------|-------------|
-| id | Primary Key | Unique exam ID |
-| name | String | Exam title |
-| faculty_id | Foreign Key | Faculty who created exam |
+5. **Run the Frontend:**
+   ```bash
+   cd ../src
+   npm start
+   ```
 
-**Questions Table:**
-| Field | Type | Description |
-|-------|------|-------------|
-| id | Primary Key | Unique question ID |
-| exam_id | Foreign Key | Exam to which it belongs |
-| type | String | 'MCQ', 'Text', 'Drawing' |
+6. **Access the Application:**
+   Open your browser and navigate to `http://localhost:3000` to access the application.
 
-**Answers Table:**
-| Field | Type | Description |
-|-------|------|-------------|
-| id | Primary Key | Unique answer ID |
-| question_id | Foreign Key | Question to which it belongs |
-| student_id | Foreign Key | Student who answered |
-| data | JSON/BLOB | Answer content (text/image) |
+## Key Features and Workflow of the App
+1. **User Authentication (Login System):**
+   - Secure login system for students and faculty.
+   - Role-Based Access for different access levels.
+
+2. **Exam Dashboard:**
+   - Students see scheduled exams with details.
+   - Countdown timer for active exams.
+
+3. **Taking the Exam:**
+   - Rich text editor for answers.
+   - File upload for handwritten/drawn answers.
+   - Autosave functionality.
+   - Exam timer for automatic submission.
+
+4. **Submitting the Exam:**
+   - Submission sent to the corresponding faculty member.
+   - Backend handles submissions based on subject mapping.
+
+5. **Faculty Notification:**
+   - Automatic notifications for faculty upon submission.
+
+6. **Evaluation and Feedback:**
+   - Faculty can grade submissions and provide feedback.
+
+## Technology Stack
+1. **Front-end:**
+   - React Native or Flutter for cross-platform compatibility.
+   - Responsive Design for tablets.
+
+2. **Back-end:**
+   - Firebase for real-time database and cloud storage.
+   - Node.js/Express for managing authentication and routing.
+
+3. **Security:**
+   - Exam Lockdown Mode to prevent access to other apps.
+
+4. **Submission Handling:**
+   - Cloud storage for securely storing uploaded files.
+
+## Implementation Steps
+### Frontend
+- **Canvas Integration:** Use a library for drawing capabilities.
+- **Toolbar Implementation:** Fixed toolbar for tools.
+- **Question Series Navigation:** Manage current question state.
+- **Timer:** Implement countdown timer.
+
+### Backend
+- **Answer Management:** Store answers in a database.
+- **Auto-Save API:** Create an API for real-time saving.
+- **Final Submission API:** Validate and save the complete exam.
+
+## Additional Features
+- **Kiosk Mode:** Lock the tablet to the exam interface.
+- **Offline Mode:** Save answers locally during network issues.
+
+## Workflow Example
+1. Student logs into the app and selects their exam from the dashboard.
+2. Writes answers in the text editor or uploads PDFs/images for handwritten/drawn responses.
+3. Submits the exam through the app.
+4. Faculty receives the exam submission, reviews it, and provides feedback.
+5. Students can later view their results and feedback on the app.
