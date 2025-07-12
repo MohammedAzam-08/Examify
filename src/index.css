@@ -1,0 +1,97 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Theme Variables */
+:root {
+  --primary-color: theme('colors.blue.600');
+  --primary-hover: theme('colors.blue.700');
+  --primary-light: theme('colors.blue.100');
+  --primary-text: theme('colors.blue.800');
+  --sidebar-bg: linear-gradient(to bottom, theme('colors.blue.700'), theme('colors.blue.800'));
+  --sidebar-hover: rgba(255, 255, 255, 0.1);
+}
+
+/* Theme Color Variants */
+.theme-blue {
+  --primary-color: theme('colors.blue.600');
+  --primary-hover: theme('colors.blue.700');
+  --primary-light: theme('colors.blue.100');
+  --primary-text: theme('colors.blue.800');
+  --sidebar-bg: linear-gradient(to bottom, theme('colors.blue.700'), theme('colors.blue.800'));
+}
+
+.theme-purple {
+  --primary-color: theme('colors.purple.600');
+  --primary-hover: theme('colors.purple.700');
+  --primary-light: theme('colors.purple.100');
+  --primary-text: theme('colors.purple.800');
+  --sidebar-bg: linear-gradient(to bottom, theme('colors.purple.700'), theme('colors.purple.800'));
+}
+
+.theme-green {
+  --primary-color: theme('colors.emerald.600');
+  --primary-hover: theme('colors.emerald.700');
+  --primary-light: theme('colors.emerald.100');
+  --primary-text: theme('colors.emerald.800');
+  --sidebar-bg: linear-gradient(to bottom, theme('colors.emerald.700'), theme('colors.emerald.800'));
+}
+
+.theme-orange {
+  --primary-color: theme('colors.orange.600');
+  --primary-hover: theme('colors.orange.700');
+  --primary-light: theme('colors.orange.100');
+  --primary-text: theme('colors.orange.800');
+  --sidebar-bg: linear-gradient(to bottom, theme('colors.orange.600'), theme('colors.orange.700'));
+}
+
+.theme-gray {
+  --primary-color: theme('colors.slate.600');
+  --primary-hover: theme('colors.slate.700');
+  --primary-light: theme('colors.slate.100');
+  --primary-text: theme('colors.slate.800');
+  --sidebar-bg: linear-gradient(to bottom, theme('colors.slate.700'), theme('colors.slate.800'));
+}
+
+.theme-white {
+  --primary-color: theme('colors.slate.400');
+  --primary-hover: theme('colors.slate.500');
+  --primary-light: theme('colors.slate.50');
+  --primary-text: theme('colors.slate.700');
+  --sidebar-bg: linear-gradient(to bottom, theme('colors.white'), theme('colors.slate.100'));
+}
+
+/* Font Size Variants */
+.font-size-small {
+  font-size: 0.9rem;
+}
+
+.font-size-medium {
+  font-size: 1rem;
+}
+
+.font-size-large {
+  font-size: 1.1rem;
+}
+
+/* Apply theme variables to components */
+.btn-primary {
+  background-color: var(--primary-color);
+}
+
+.btn-primary:hover {
+  background-color: var(--primary-hover);
+}
+
+.sidebar {
+  background: var(--sidebar-bg);
+}
+
+.sidebar-item:hover {
+  background-color: var(--sidebar-hover);
+}
+
+.active-nav-link {
+  background-color: var(--primary-light);
+  color: var(--primary-text);
+}

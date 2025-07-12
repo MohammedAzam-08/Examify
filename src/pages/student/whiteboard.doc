@@ -1,0 +1,602 @@
+import React, { useState, useRef, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { Stage, Layer, Line, Circle, Rect } from 'react-konva';
+import { jsPDF } from 'jspdf';
+import { Clock, Eraser, Pencil, Save, Check, ArrowLeft, ArrowRight, Undo, Redo, RotateCcw, Square, Circle as CircleIcon } from 'lucide-react';
+import { useAuth } from '../../contexts/AuthContext';
+
+// Mock exam data
+const mockExam = {
+  id: '1',
+  title: 'Mathematics Midterm',
+  instructions: 'Answer all questions. Show your work for partial credit. Use the whiteboard to write your solutions.',
+  duration: 120, // minutes
+  date: '2025-06-15T09:00:00',
+  questions: [
+    { id: 1, text: 'What is 2 + 2?' },
+    { id: 2, text: 'Solve for x: 3x + 5 = 20' },
+    { id: 3, text: 'Calculate the area of a circle with radius 5.' },
+    { id: 4, text: 'What is the derivative of x^2?' },
+    { id: 5, text: 'Integrate the function f(x) = 3x.' },
+  ],
+};
+
+interface Point {
+  x: number;
+  y: number;
+}
+
+interface LineElement {
+  points: number[];
+  tool: string;
+  color: string;
+  strokeWidth: number;
+  shapeType?: 'circle' | 'square' | 'line';
+  startPoint?: Point;
+  endPoint?: Point;
+}
+
+const colorPalette = [
+  '#000000', '#FF0000', '#00FF00', '#0000FF', '#FFFF00', 
+  '#FF00FF', '#00FFFF', '#FFA500', '#800080', '#008000', 
+  '#000080', '#808080'
+];
+
+const WhiteboardExam: React.FC = () => {
+  const { examId } = useParams<{ examId: string }>();
+  const navigate = useNavigate();
+
+  // Whiteboard state
+  const [tool, setTool] = useState<'pen' | 'eraser' | 'circle' | 'square' | 'line'>('pen');
+  const [color, setColor] = useState<string>('#000000');
+  const [lines, setLines] = useState<LineElement[]>([]);
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pages, setPages] = useState<{ [key: number]: LineElement[] }>({ 1: [] });
+  const [saved, setSaved] = useState(true);
+
+  // Undo/Redo stacks
+  const [undoStack, setUndoStack] = useState<LineElement[][]>([]);
+  const [redoStack, setRedoStack] = useState<LineElement[][]>([]);
+
+  // Timer state
+  const [timeRemaining, setTimeRemaining] = useState(mockExam.duration * 60); // in seconds
+  const [submitting, setSubmitting] = useState(false);
+
+  const stageRef = useRef<any>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [stageSize, setStageSize] = useState({
+    width: 0,
+    height: 0,
+  });
+
+  // Initialize stage size
+  useEffect(() => {
+    if (containerRef.current) {
+      const { clientWidth, clientHeight } = containerRef.current;
+      setStageSize({
+        width: clientWidth,
+        height: clientHeight > 500 ? clientHeight : 500,
+      });
+    }
+    
+    // Set up window resize handler
+    const handleResize = () => {
+      if (containerRef.current) {
+        const { clientWidth, clientHeight } = containerRef.current;
+        setStageSize({
+          width: clientWidth,
+          height: clientHeight > 500 ? clientHeight : 500,
+        });
+      }
+    };
+    
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  // Setup timer
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setTimeRemaining(prev => {
+        if (prev <= 1) {
+          clearInterval(interval);
+          handleSubmit();
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    
+    return () => clearInterval(interval);
+  }, []);
+  
+  // Auto-save to local storage every 30 seconds
+  useEffect(() => {
+    const autoSaveInterval = setInterval(() => {
+      if (!saved) {
+        saveToLocalStorage();
+        setSaved(true);
+      }
+    }, 30000);
+    
+    return () => clearInterval(autoSaveInterval);
+  }, [saved, pages, currentPage]);
+  
+  // Load from local storage on mount
+  useEffect(() => {
+    const savedData = localStorage.getItem(`exam-${examId}`);
+    if (savedData) {
+      try {
+        const parsedData = JSON.parse(savedData);
+        setPages(parsedData.pages);
+        setCurrentPage(parsedData.currentPage);
+        setLines(parsedData.pages[parsedData.currentPage] || []);
+      } catch (error) {
+        console.error('Error loading saved data:', error);
+      }
+    }
+  }, [examId]);
+  
+  const saveToLocalStorage = () => {
+    // Update the current page lines in the pages object
+    const updatedPages = { ...pages, [currentPage]: lines };
+    
+    localStorage.setItem(`exam-${examId}`, JSON.stringify({
+      pages: updatedPages,
+      currentPage,
+    }));
+  };
+
+  const pushToUndoStack = (currentLines: LineElement[]) => {
+    setUndoStack([...undoStack, currentLines]);
+    setRedoStack([]); // Clear redo stack on new action
+  };
+
+  const handleUndo = () => {
+    if (undoStack.length > 0) {
+      const lastState = undoStack[undoStack.length - 1];
+      setRedoStack([...redoStack, lines]);
+      setLines(lastState);
+      setUndoStack(undoStack.slice(0, -1));
+      setSaved(false);
+    }
+  };
+
+  const handleRedo = () => {
+    if (redoStack.length > 0) {
+      const lastRedoState = redoStack[redoStack.length - 1];
+      setUndoStack([...undoStack, lines]);
+      setLines(lastRedoState);
+      setRedoStack(redoStack.slice(0, -1));
+      setSaved(false);
+    }
+  };
+
+  const handleMouseDown = (e: any) => {
+    setIsDrawing(true);
+    setSaved(false);
+
+    const pos = e.target.getStage().getPointerPosition();
+
+    if (tool === 'pen' || tool === 'eraser') {
+      const newLine: LineElement = {
+        points: [pos.x, pos.y],
+        tool,
+        color: tool === 'pen' ? color : '#ffffff',
+        strokeWidth: tool === 'pen' ? 2 : 20,
+      };
+      pushToUndoStack(lines);
+      setLines([...lines, newLine]);
+    } else if (tool === 'circle' || tool === 'square' || tool === 'line') {
+      // Start shape drawing
+      const newShape: LineElement = {
+        points: [],
+        tool,
+        color,
+        strokeWidth: 2,
+        shapeType: tool,
+        startPoint: pos,
+        endPoint: pos,
+      };
+      pushToUndoStack(lines);
+      setLines([...lines, newShape]);
+    }
+  };
+
+  const handleMouseMove = (e: any) => {
+    if (!isDrawing) return;
+
+    const stage = e.target.getStage();
+    const point = stage.getPointerPosition();
+
+    if (tool === 'pen' || tool === 'eraser') {
+      const lastLine = lines[lines.length - 1];
+      lastLine.points = lastLine.points.concat([point.x, point.y]);
+      const updatedLines = [...lines.slice(0, -1), lastLine];
+      setLines(updatedLines);
+    } else if (tool === 'circle' || tool === 'square' || tool === 'line') {
+      const lastShape = lines[lines.length - 1];
+      lastShape.endPoint = point;
+      const updatedLines = [...lines.slice(0, -1), lastShape];
+      setLines(updatedLines);
+    }
+  };
+
+  const handleMouseUp = () => {
+    setIsDrawing(false);
+  };
+
+  const changePage = (newPage: number) => {
+    if (newPage < 1) return;
+    // Save current page lines to pages state
+    const updatedPages = { ...pages, [currentPage]: lines };
+    
+    // Switch to the new page
+    setPages(updatedPages);
+    setCurrentPage(newPage);
+    
+    // Load lines for the new page or empty array if it's a new page
+    setLines(updatedPages[newPage] || []);
+    setSaved(false);
+  };
+
+  const handleSave = () => {
+    saveToLocalStorage();
+    setSaved(true);
+  };
+
+
+  const { user } = useAuth();
+
+  const handleSubmit = async () => {
+    setSubmitting(true);
+
+    try {
+      // Save current page
+      const updatedPages = { ...pages, [currentPage]: lines };
+      setPages(updatedPages);
+
+      // Generate PDF
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const pageCount = Object.keys(updatedPages).length;
+
+      for (let pageNum = 1; pageNum <= pageCount; pageNum++) {
+        // Set current page to ensure rendering
+        setCurrentPage(pageNum);
+        setLines(updatedPages[pageNum] || []);
+
+        // Allow rendering to complete
+        await new Promise(resolve => setTimeout(resolve, 100));
+
+        if (stageRef.current) {
+          const uri = stageRef.current.toDataURL();
+          const imgProps = pdf.getImageProperties(uri);
+          const pdfWidth = pdf.internal.pageSize.getWidth();
+          const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+
+          if (pageNum > 1) {
+            pdf.addPage();
+          }
+
+          pdf.addImage(uri, 'PNG', 0, 0, pdfWidth, pdfHeight);
+        }
+      }
+
+      // Convert PDF to Blob
+      const pdfBlob = pdf.output('blob');
+
+      // Create FormData and append PDF and examId
+      const formData = new FormData();
+      const file = new File([pdfBlob], `Exam-${examId}.pdf`, { type: 'application/pdf' });
+      formData.append('pdf', file);
+      formData.append('examId', examId || '');
+
+      // Get token from localStorage
+      const token = localStorage.getItem('token');
+
+      // Upload PDF to backend
+      const response = await fetch('/api/submissions', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to submit exam');
+      }
+
+      // Clear local storage
+      localStorage.removeItem(`exam-${examId}`);
+
+      // Redirect to dashboard with success message
+      setTimeout(() => {
+        navigate('/student');
+      }, 2000);
+    } catch (error) {
+      console.error('Error submitting exam:', error);
+      setSubmitting(false);
+    }
+  };
+
+  // Format time remaining
+  const formatTime = (seconds: number) => {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+    
+    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  return (
+    <div className="flex flex-col h-[calc(100vh-4rem)]">
+      {/* Exam header */}
+      <div className="bg-white border-b border-gray-200 p-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h1 className="text-xl font-bold text-gray-800">{mockExam.title}</h1>
+            <p className="text-sm text-gray-600 mt-1">Page {currentPage}</p>
+          </div>
+          
+          <div className="mt-3 sm:mt-0 flex items-center space-x-2">
+            <div className={`flex items-center px-3 py-1 rounded-full text-sm font-medium ${
+              timeRemaining < 300 
+                ? 'bg-red-100 text-red-800' 
+                : timeRemaining < 600 
+                  ? 'bg-yellow-100 text-yellow-800' 
+                  : 'bg-blue-100 text-blue-800'
+            }`}>
+              <Clock size={16} className="mr-1" />
+              <span>{formatTime(timeRemaining)}</span>
+            </div>
+            
+            <button
+              onClick={handleSave}
+              disabled={saved}
+              className="inline-flex items-center px-3 py-1 border border-transparent text-sm font-medium rounded-md text-blue-700 bg-blue-50 hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Save size={16} className="mr-1" />
+              {saved ? 'Saved' : 'Save'}
+            </button>
+          </div>
+        </div>
+      </div>
+      
+      {/* Exam instructions */}
+      <div className="bg-amber-50 border-b border-amber-200 p-4">
+        <h2 className="text-sm font-medium text-amber-800">Instructions:</h2>
+        <p className="text-sm text-amber-700 mt-1">{mockExam.instructions}</p>
+      </div>
+      
+      {/* Questions toolbar */}
+      <div className="bg-gray-50 border-b border-gray-300 p-2 overflow-x-auto whitespace-nowrap">
+        {mockExam.questions.map((question) => (
+          <div
+            key={question.id}
+            className="inline-block bg-white border border-gray-300 rounded-md px-3 py-1 mr-2 text-sm text-gray-700 cursor-pointer hover:bg-blue-100"
+            title={question.text}
+          >
+            Q{question.id}: {question.text.length > 50 ? question.text.slice(0, 47) + '...' : question.text}
+          </div>
+        ))}
+      </div>
+      
+      {/* Whiteboard toolbar */}
+      <div className="bg-white border-b border-gray-200 p-2 flex items-center justify-between flex-wrap">
+        <div className="flex items-center space-x-2 flex-wrap">
+          <button
+            onClick={() => setTool('pen')}
+            className={`p-2 rounded-md focus:outline-none ${
+              tool === 'pen' ? 'bg-blue-100 text-blue-700' : 'text-gray-700 hover:bg-gray-100'
+            }`}
+            title="Pencil"
+          >
+            <Pencil size={20} />
+          </button>
+          <button
+            onClick={() => setTool('eraser')}
+            className={`p-2 rounded-md focus:outline-none ${
+              tool === 'eraser' ? 'bg-blue-100 text-blue-700' : 'text-gray-700 hover:bg-gray-100'
+            }`}
+            title="Eraser"
+          >
+            <Eraser size={20} />
+          </button>
+          <button
+            onClick={() => setTool('circle')}
+            className={`p-2 rounded-md focus:outline-none ${
+              tool === 'circle' ? 'bg-blue-100 text-blue-700' : 'text-gray-700 hover:bg-gray-100'
+            }`}
+            title="Circle"
+          >
+            <CircleIcon size={20} />
+          </button>
+          <button
+            onClick={() => setTool('square')}
+            className={`p-2 rounded-md focus:outline-none ${
+              tool === 'square' ? 'bg-blue-100 text-blue-700' : 'text-gray-700 hover:bg-gray-100'
+            }`}
+            title="Square"
+          >
+            <Square size={20} />
+          </button>
+          <button
+            onClick={() => setTool('line')}
+            className={`p-2 rounded-md focus:outline-none ${
+              tool === 'line' ? 'bg-blue-100 text-blue-700' : 'text-gray-700 hover:bg-gray-100'
+            }`}
+            title="Line"
+          >
+            <RotateCcw size={20} />
+          </button>
+        </div>
+        
+        <div className="flex items-center space-x-1 flex-wrap">
+          {colorPalette.map((colorOption) => (
+            <button
+              key={colorOption}
+              onClick={() => setColor(colorOption)}
+              className={`w-8 h-8 rounded-full border-2 border-transparent hover:border-gray-400 focus:outline-none ${
+                color === colorOption ? 'ring-2 ring-blue-500' : ''
+              }`}
+              style={{ backgroundColor: colorOption }}
+              title={`Color ${colorOption}`}
+            />
+          ))}
+        </div>
+
+        <div className="flex items-center space-x-2 flex-wrap">
+          <button
+            onClick={handleUndo}
+            disabled={undoStack.length === 0}
+            className="p-2 rounded-md text-gray-700 hover:bg-gray-100 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Undo"
+          >
+            <Undo size={20} />
+          </button>
+          <button
+            onClick={handleRedo}
+            disabled={redoStack.length === 0}
+            className="p-2 rounded-md text-gray-700 hover:bg-gray-100 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Redo"
+          >
+            <Redo size={20} />
+          </button>
+
+          <button
+            onClick={() => changePage(currentPage - 1)}
+            disabled={currentPage === 1}
+            className="p-2 rounded-md text-gray-700 hover:bg-gray-100 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Previous Page"
+          >
+            <ArrowLeft size={20} />
+          </button>
+          <span className="text-sm text-gray-600 select-none">Page {currentPage}</span>
+          <button
+            onClick={() => changePage(currentPage + 1)}
+            className="p-2 rounded-md text-gray-700 hover:bg-gray-100 focus:outline-none"
+            title="Next Page"
+          >
+            <ArrowRight size={20} />
+          </button>
+        </div>
+        
+        <button
+          onClick={handleSubmit}
+          disabled={submitting}
+          className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed mt-2 sm:mt-0"
+          title="Submit Exam"
+        >
+          {submitting ? (
+            <>
+              <span className="mr-2">Submitting...</span>
+            </>
+          ) : (
+                       <>
+              <Check size={16} className="mr-1" />
+              Submit Exam
+            </>
+          )}
+        </button>
+      </div>
+      
+      {/* Whiteboard canvas */}
+      <div className="flex-1 overflow-hidden bg-white" ref={containerRef}>
+        <Stage
+          width={stageSize.width}
+          height={stageSize.height}
+          onMouseDown={handleMouseDown}
+          onMousemove={handleMouseMove}
+          onMouseup={handleMouseUp}
+          onTouchStart={handleMouseDown}
+          onTouchMove={handleMouseMove}
+          onTouchEnd={handleMouseUp}
+          ref={stageRef}
+          className="bg-white"
+        >
+          <Layer>
+            {lines.map((line, i) => {
+              if (line.tool === 'pen' || line.tool === 'eraser') {
+                return (
+                  <Line
+                    key={i}
+                    points={line.points}
+                    stroke={line.color}
+                    strokeWidth={line.strokeWidth}
+                    tension={0.5}
+                    lineCap="round"
+                    lineJoin="round"
+                    globalCompositeOperation={
+                      line.tool === 'eraser' ? 'destination-out' : 'source-over'
+                    }
+                  />
+                );
+              } else if (line.shapeType === 'circle' && line.startPoint && line.endPoint) {
+                const radius = Math.sqrt(
+                  Math.pow(line.endPoint.x - line.startPoint.x, 2) +
+                  Math.pow(line.endPoint.y - line.startPoint.y, 2)
+                ) / 2;
+                const centerX = (line.startPoint.x + line.endPoint.x) / 2;
+                const centerY = (line.startPoint.y + line.endPoint.y) / 2;
+                return (
+                  <Circle
+                    key={i}
+                    x={centerX}
+                    y={centerY}
+                    radius={radius}
+                    stroke={line.color}
+                    strokeWidth={line.strokeWidth}
+                    fill="transparent"
+                  />
+                );
+              } else if (line.shapeType === 'square' && line.startPoint && line.endPoint) {
+                const x = Math.min(line.startPoint.x, line.endPoint.x);
+                const y = Math.min(line.startPoint.y, line.endPoint.y);
+                const width = Math.abs(line.endPoint.x - line.startPoint.x);
+                const height = Math.abs(line.endPoint.y - line.startPoint.y);
+                const size = Math.max(width, height); // make it a perfect square
+                return (
+                  <Rect
+                    key={i}
+                    x={x}
+                    y={y}
+                    width={size}
+                    height={size}
+                    stroke={line.color}
+                    strokeWidth={line.strokeWidth}
+                    fill="transparent"
+                  />
+                );
+              } else if (line.shapeType === 'line' && line.startPoint && line.endPoint) {
+                return (
+                  <Line
+                    key={i}
+                    points={[
+                      line.startPoint.x,
+                      line.startPoint.y,
+                      line.endPoint.x,
+                      line.endPoint.y,
+                    ]}
+                    stroke={line.color}
+                    strokeWidth={line.strokeWidth}
+                    lineCap="round"
+                    lineJoin="round"
+                    tension={0}
+                    globalCompositeOperation="source-over"
+                  />
+                );
+              } else {
+                return null;
+              }
+            })}
+          </Layer>
+        </Stage>
+      </div>
+    </div>
+  );
+};
+
+export default WhiteboardExam;
