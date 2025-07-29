@@ -97,10 +97,6 @@ JWT_SECRET=your_jwt_secret_key
 
 📱 Responsive tests using browser developer tools (mobile/tablet/desktop)
 
-📸 Screenshots
-Login Page	Teacher Dashboard	Student Exam Page
-
-📷 Replace placeholders with actual screenshots once UI is finalized
 
 🧠 Future Enhancements
  Timer-based auto-submit for exams
